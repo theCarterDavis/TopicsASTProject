@@ -7,5 +7,7 @@ RUN pip install --no-cache-dir \
     tree-sitter-python==0.25.0
 
 COPY parse.py /app/parse.py
+COPY compare.py /app/compare.py
+COPY flexible_tree_matching.py /app/flexible_tree_matching.py
 
-ENTRYPOINT ["python", "parse.py"]
+ENTRYPOINT ["python"]

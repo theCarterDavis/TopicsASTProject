@@ -16,7 +16,7 @@ jobs:
       - name: Build Docker image
         run: docker build -t ast-parser .
 
-      - name: Find changed Python files and parse both versions
+      - name: Find changed Python files and compare ASTs
         run: |
           # Determine the parent commit.
           # For the very first commit there is no parent, so we handle that.
@@ -48,20 +48,24 @@ jobs:
             echo "  FILE: $FILE"
             echo "=========================================="
 
-            # --- Old version (from parent commit) ---
-            # The file might not exist in the parent (newly added file)
+            # --- If both old and new versions exist, run the comparison ---
             if git show "$PARENT:$FILE" > /tmp/old_version.py 2>/dev/null; then
-              echo ""
-              echo "--- OLD version ($PARENT) ---"
-              docker run --rm -v /tmp/old_version.py:/app/target.py ast-parser target.py
-            else
-              echo "(file did not exist in parent commit)"
-            fi
+              cp "$FILE" /tmp/new_version.py
 
-            # --- New version (from current commit) ---
-            echo ""
-            echo "--- NEW version ($CURRENT) ---"
-            docker run --rm -v "$(pwd)/$FILE:/app/target.py" ast-parser target.py
+              echo ""
+              echo "Running AST comparison (old vs new) ..."
+              docker run --rm \
+                -v /tmp/old_version.py:/app/old_version.py \
+                -v /tmp/new_version.py:/app/new_version.py \
+                ast-parser compare.py old_version.py new_version.py
+            else
+              # Newly added file — no old version to compare against
+              echo "(file did not exist in parent commit — showing AST only)"
+              echo ""
+              docker run --rm \
+                -v "$(pwd)/$FILE:/app/target.py" \
+                ast-parser parse.py target.py
+            fi
 
           done
 
