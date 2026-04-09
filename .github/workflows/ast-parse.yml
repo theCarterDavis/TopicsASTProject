@@ -1,0 +1,67 @@
+name: AST Parse Changed Files
+
+on:
+  push:
+
+jobs:
+  parse-changed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Docker image
+        run: docker build -t ast-parser .
+
+      - name: Find changed Python files and parse both versions
+        run: |
+          # Determine the parent commit.
+          # For the very first commit there is no parent, so we handle that.
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            PARENT=$(git rev-parse HEAD~1)
+          else
+            echo "No parent commit — this is the initial commit. Nothing to compare."
+            exit 0
+          fi
+
+          CURRENT=$(git rev-parse HEAD)
+          echo "Comparing $PARENT -> $CURRENT"
+
+          # Get the list of Python files that changed between the two commits
+          CHANGED=$(git diff --name-only --diff-filter=ACM "$PARENT" "$CURRENT" -- '*.py')
+
+          if [ -z "$CHANGED" ]; then
+            echo "No Python files changed."
+            exit 0
+          fi
+
+          echo "Changed Python files:"
+          echo "$CHANGED"
+          echo "=============================="
+
+          for FILE in $CHANGED; do
+            echo ""
+            echo "=========================================="
+            echo "  FILE: $FILE"
+            echo "=========================================="
+
+            # --- Old version (from parent commit) ---
+            # The file might not exist in the parent (newly added file)
+            if git show "$PARENT:$FILE" > /tmp/old_version.py 2>/dev/null; then
+              echo ""
+              echo "--- OLD version ($PARENT) ---"
+              docker run --rm -v /tmp/old_version.py:/app/target.py ast-parser target.py
+            else
+              echo "(file did not exist in parent commit)"
+            fi
+
+            # --- New version (from current commit) ---
+            echo ""
+            echo "--- NEW version ($CURRENT) ---"
+            docker run --rm -v "$(pwd)/$FILE:/app/target.py" ast-parser target.py
+
+          done
+
