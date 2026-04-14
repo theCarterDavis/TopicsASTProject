@@ -4,13 +4,12 @@ def ILikeMath():
 	x = 4+9
 	print(x)
 
-	
-def da():
-	print("hey there")
-
-
 def hello():
 	print("Hello World!")
+	
+def dadd():
+	print("hey there")
+
 
 hello()
 	
