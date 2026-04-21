@@ -18,5 +18,5 @@ print("Differences:")
 print_diff(diff)
 
 
-
-print("Here is a test for JJ!")
+def deofunc():
+    print("Here is a test for JJ!")
