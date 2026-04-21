@@ -11,6 +11,7 @@ class TreeNode:
     children: list["TreeNode"] = field(default_factory=list)
     parent: Optional["TreeNode"] = field(default=None, repr=False)
     _id: int = field(default=-1, repr=False)
+    line: Optional[int] = None
 
     def add_child(self, child: "TreeNode") -> "TreeNode":
         child.parent = self
@@ -426,8 +427,8 @@ class BipartiteGraph:
         ui_m = max(ui_m, 1)
         ui_n = max(ui_n, 1)
         lower = self.model.w_s * (
-            ld_m / (ui_m * (ld_m + 1)) if ld_m > 0 else 0 +
-            ld_n / (ui_n * (ld_n + 1)) if ld_n > 0 else 0
+            (ld_m / (ui_m * (ld_m + 1)) if ld_m > 0 else 0) +
+            (ld_n / (ui_n * (ld_n + 1)) if ld_n > 0 else 0)
         )
 
         return lower, upper
@@ -537,6 +538,7 @@ def _propose_matching(current: Matching, nodes1: list[TreeNode],
             matching.add_edge(Edge(m, n))
             matched1.add(id(m))
             matched2.add(id(n))
+            graph.fix_edge(m, n)
 
     # Match remaining to no-match
     for m in nodes1:
@@ -670,6 +672,42 @@ def describe_diff(matching: Matching) -> list[DiffEntry]:
 
     return entries
 
+def print_human_summary(diff):
+    relabeled = [d for d in diff if d.kind == "relabel"]
+    inserted = [d for d in diff if d.kind == "inserted"]
+    deleted = [d for d in diff if d.kind == "deleted"]
+
+    print("  Human-readable summary:")
+
+    for d in relabeled:
+        type1 = d.label1.split(":")[0] if d.label1 else None
+        type2 = d.label2.split(":")[0] if d.label2 else None
+
+        if type1 == "identifier" and type2 == "identifier":
+            old_name = d.label1.split(":", 1)[1]
+            new_name = d.label2.split(":", 1)[1]
+            print(f'    - Identifier changed from "{old_name}" to "{new_name}"')
+        elif type1 == type2:
+            print(f'    - {type1} changed from "{d.label1}" to "{d.label2}"')
+        else:
+            print(f'    - Possible structural change: {d.label1} became {d.label2}')
+
+    inserted_labels = [d.label2 for d in inserted]
+    if "function_definition" in inserted_labels:
+        func_names = [lbl for lbl in inserted_labels if lbl and lbl.startswith("identifier:")]
+        if func_names:
+            print(f'    - Added a new function, possibly named "{func_names[0].split(":",1)[1]}"')
+        else:
+            print("    - Added a new function")
+
+    if "assignment" in inserted_labels:
+        ids = [lbl for lbl in inserted_labels if lbl and lbl.startswith("identifier:")]
+        ints = [lbl for lbl in inserted_labels if lbl and lbl.startswith("integer:")]
+        if ids and ints:
+            print(f'    - Added an assignment like {ids[0].split(":",1)[1]} = {ints[0].split(":",1)[1]}')
+        else:
+            print("    - Added an assignment")
+
 
 def print_diff(diff: list[DiffEntry]):
     """Print a human-readable summary of a tree diff."""
@@ -736,7 +774,10 @@ def tree_sitter_to_tree(ts_node, source: bytes) -> TreeNode:
         text = source[ts_node.start_byte:ts_node.end_byte].decode(errors="replace")
         label = f"{ts_node.type}:{text}"
 
-    tree_node = TreeNode(label=label)
+    tree_node = TreeNode(
+        label=label,
+        line=ts_node.start_point[0] + 1
+    )
 
     for child in ts_node.named_children:
         child_tree = tree_sitter_to_tree(child, source)
